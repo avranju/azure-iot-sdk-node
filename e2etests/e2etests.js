@@ -83,7 +83,7 @@ device_provision(hubConnectionString, function (err, provisionedDevices) {
   run();
 });
 
-twin_e2e_tests(hubConnectionString);
+twin_e2e_tests(hubConnectionString, [deviceAmqp.Amqp, deviceMqtt.MqttWs]);
 device_method(hubConnectionString, deviceMethodsProtocols);
 job_client(hubConnectionString);
 
