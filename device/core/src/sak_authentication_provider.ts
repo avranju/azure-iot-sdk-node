@@ -3,6 +3,8 @@
 
 import { EventEmitter } from 'events';
 import { AuthenticationProvider, AuthenticationType, ConnectionString, SharedAccessSignature, errors, TransportConfig, encodeUriComponentStrict } from 'azure-iot-common';
+import { SignatureProvider } from './signature_provider';
+import { SharedAccessKeySignatureProvider } from './sak_signature_provider';
 
 /**
  * Provides an `AuthenticationProvider` object that can be created simply with a connection string and is then used by the device client and transports to authenticate
@@ -21,6 +23,7 @@ export class SharedAccessKeyAuthenticationProvider extends EventEmitter implemen
   private _renewalTimeout: NodeJS.Timer;
 
   private _credentials: TransportConfig;
+  private _signatureProvider: SignatureProvider;
 
   /**
    * @private
@@ -31,7 +34,7 @@ export class SharedAccessKeyAuthenticationProvider extends EventEmitter implemen
    * @param tokenValidTimeInSeconds        [optional] The number of seconds for which a token is supposed to be valid.
    * @param tokenRenewalMarginInSeconds    [optional] The number of seconds before the end of the validity period during which the `SharedAccessKeyAuthenticationProvider` should renew the token.
    */
-  constructor(credentials: TransportConfig, tokenValidTimeInSeconds?: number, tokenRenewalMarginInSeconds?: number) {
+  constructor(credentials: TransportConfig, tokenValidTimeInSeconds?: number, tokenRenewalMarginInSeconds?: number, signatureProvider?: SignatureProvider) {
     super();
     /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_001: [The `constructor` shall create the initial token value using the `credentials` parameter.]*/
     this._credentials  = credentials;
@@ -43,6 +46,8 @@ export class SharedAccessKeyAuthenticationProvider extends EventEmitter implemen
     if (this._tokenValidTimeInSeconds <= this._tokenRenewalMarginInSeconds) {
       throw new errors.ArgumentError('tokenRenewalMarginInSeconds must be less than tokenValidTimeInSeconds');
     }
+
+    this._signatureProvider = signatureProvider || new SharedAccessKeySignatureProvider(this._credentials.sharedAccessKey, this._tokenValidTimeInSeconds);
 
     /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_002: [The `constructor` shall start a timer that will automatically renew the token every (`tokenValidTimeInSeconds` - `tokenRenewalMarginInSeconds`) seconds if specified, or 45 minutes by default.]*/
     this._renewToken();
@@ -72,9 +77,6 @@ export class SharedAccessKeyAuthenticationProvider extends EventEmitter implemen
       clearTimeout(this._renewalTimeout);
     }
 
-    /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_009: [Every token shall be created with a validity period of `tokenValidTimeInSeconds` if specified when the constructor was called, or 1 hour by default.]*/
-    const newExpiry =  Math.floor(Date.now() / 1000) + this._tokenValidTimeInSeconds;
-
     /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_010: [Every token shall be created using the `azure-iot-common.SharedAccessSignature.create` method and then serialized as a string, with the arguments to the create methods being:
     ```
     resourceUri: <IoT hub host>/devices/<deviceId>
@@ -87,13 +89,20 @@ export class SharedAccessKeyAuthenticationProvider extends EventEmitter implemen
       resourceString += '/modules/' + this._credentials.moduleId;
     }
     const resourceUri = encodeUriComponentStrict(resourceString);
-    const sas = SharedAccessSignature.create(resourceUri, this._credentials.sharedAccessKeyName, this._credentials.sharedAccessKey, newExpiry);
-    this._credentials.sharedAccessSignature = sas.toString();
 
-    const nextRenewalTimeout = (this._tokenValidTimeInSeconds - this._tokenRenewalMarginInSeconds) * 1000;
-    this._renewalTimeout = setTimeout(() => this._renewToken(), nextRenewalTimeout);
-    /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_005: [Every time a new token is created, the `newTokenAvailable` event shall be fired with the updated credentials.]*/
-    this.emit('newTokenAvailable', this._credentials);
+    /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_009: [Every token shall be created with a validity period of `tokenValidTimeInSeconds` if specified when the constructor was called, or 1 hour by default.]*/
+    this._signatureProvider.sign(this._credentials.sharedAccessKeyName, resourceUri, (err, sas) => {
+      if (err) {
+        this.emit('error', err);
+      } else {
+        this._credentials.sharedAccessSignature = sas.toString();
+
+        const nextRenewalTimeout = (this._tokenValidTimeInSeconds - this._tokenRenewalMarginInSeconds) * 1000;
+        this._renewalTimeout = setTimeout(() => this._renewToken(), nextRenewalTimeout);
+        /*Codes_SRS_NODE_SAK_AUTH_PROVIDER_16_005: [Every time a new token is created, the `newTokenAvailable` event shall be fired with the updated credentials.]*/
+        this.emit('newTokenAvailable', this._credentials);
+      }
+    });
   }
 
   /**

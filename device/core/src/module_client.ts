@@ -12,11 +12,11 @@ import { DeviceClientOptions } from './interfaces';
 import { Twin  } from './twin';
 
 /**
- * IoT Hub device client used to connect a device with an Azure IoT hub.
+ * IoT Hub module client used to connect a module with an Azure IoT hub/Edge Hub.
  *
  * Users of the SDK should call one of the factory methods,
- * {@link azure-iot-device.Client.fromConnectionString|fromConnectionString}
- * or {@link azure-iot-device.Client.fromSharedAccessSignature|fromSharedAccessSignature}
+ * {@link azure-iot-device.ModuleClient.fromConnectionString|fromConnectionString}
+ * or {@link azure-iot-device.ModuleClient.fromSharedAccessSignature|fromSharedAccessSignature}
  * to create an IoT Hub device client.
  */
 export class ModuleClient extends EventEmitter {
@@ -221,5 +221,9 @@ export class ModuleClient extends EventEmitter {
    */
   static fromAuthenticationProvider(authenticationProvider: AuthenticationProvider, transportCtor: any): ModuleClient {
     return InternalClient.fromAuthenticationProvider(authenticationProvider, transportCtor, ModuleClient) as ModuleClient;
+  }
+
+  static fromEnvironment(transportCtor: any): ModuleClient {
+    return InternalClient.fromEnvironment(transportCtor, ModuleClient) as ModuleClient;
   }
 }

@@ -256,4 +256,8 @@ export class Client extends EventEmitter {
   static fromAuthenticationProvider(authenticationProvider: AuthenticationProvider, transportCtor: any): Client {
     return InternalClient.fromAuthenticationProvider(authenticationProvider, transportCtor, Client) as Client;
   }
+
+  static fromEnvironment(transportCtor: any): Client {
+    return InternalClient.fromEnvironment(transportCtor, Client) as Client;
+  }
 }
