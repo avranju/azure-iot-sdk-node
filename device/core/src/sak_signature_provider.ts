@@ -22,8 +22,9 @@ export class SharedAccessKeySignatureProvider implements SignatureProvider {
     }
 
     // Codes_SRS_NODE_SAK_SIG_PROVIDER_13_004: [ The constructor shall save the tokenValidTimeInSeconds parameter if supplied. If not, it shall default to 3600 seconds (1 hour). ]
-    if (tokenValidTimeInSeconds)
+    if (tokenValidTimeInSeconds) {
       this._tokenValidTimeInSeconds = tokenValidTimeInSeconds;
+    }
   }
 
   sign(
