@@ -19,12 +19,19 @@ import { SharedAccessKeyAuthenticationProvider } from './sak_authentication_prov
 import { SharedAccessSignatureAuthenticationProvider } from './sas_authentication_provider';
 import { X509AuthenticationProvider } from './x509_authentication_provider';
 import { DeviceClientOptions } from './interfaces';
+import { IotEdgedSignatureProvider } from './iotedged_signature_provider.js';
 
 /**
  * @private
  * Default maximum operation timeout for client operations: 4 minutes.
  */
 const MAX_OPERATION_TIMEOUT = 240000;
+
+/**
+ * @private
+ * iotedged API version to use when issuing HTTP requests to it.
+ */
+const IOTEDGED_API_VERSION = '2018-06-28';
 
 function safeCallback(callback?: (err?: Error, result?: any) => void, error?: Error, result?: any): void {
   if (callback) callback(error, result);
@@ -642,6 +649,78 @@ export class InternalClient extends EventEmitter {
     /*Codes_SRS_NODE_INTERNAL_CLIENT_16_091: [The `fromAuthenticationProvider` method shall return a `Client` object configured with a new instance of a transport created using the `transportCtor` argument.]*/
     return new clientCtor(new transportCtor(authenticationProvider), null, new BlobUploadClient(authenticationProvider));
   }
+
+  static validateEnvironment(): void {
+    const keys = [
+      'IOTEDGE_WORKLOADURI',
+      'IOTEDGE_DEVICEID',
+      'IOTEDGE_MODULEID',
+      'IOTEDGE_IOTHUBHOSTNAME',
+      'IOTEDGE_AUTHSCHEME',
+      'IOTEDGE_MODULEGENERATIONID'
+    ];
+
+    keys.forEach((key) => {
+      if (!process.env[key]) {
+        throw new errors.PreconditionFailedError(
+          `Envrionment variable ${key} was not provided.`
+        );
+      }
+    });
+
+    // we only support sas token auth scheme at this time
+    if (process.env.IOTEDGE_AUTHSCHEME !== 'SasToken') {
+      throw new errors.PreconditionFailedError(
+        `Authentication scheme ${
+          process.env.IOTEDGE_AUTHSCHEME
+        } is not a supported scheme.`
+      );
+    }
+  }
+
+  static fromEnvironment(transportCtor: any, clientCtor: any): any {
+    // if the environment has a value for EdgeHubConnectionString then we use that
+    const connectionString =
+      process.env.EdgeHubConnectionString || process.env.IotHubConnectionString;
+    if (connectionString) {
+      return InternalClient.fromConnectionString(
+        connectionString,
+        transportCtor,
+        clientCtor
+      );
+    }
+
+    // make sure all the environment variables we need have been provided
+    InternalClient.validateEnvironment();
+
+    const authConfig = {
+      workloadUri: process.env.IOTEDGE_WORKLOADURI,
+      deviceId: process.env.IOTEDGE_DEVICEID,
+      moduleId: process.env.IOTEDGE_MODULEID,
+      iothubHostName: process.env.IOTEDGE_IOTHUBHOSTNAME,
+      authScheme: process.env.IOTEDGE_AUTHSCHEME,
+      gatewayHostName: process.env.IOTEDGE_GATEWAYHOSTNAME,
+      generationId: process.env.IOTEDGE_MODULEGENERATIONID
+    };
+
+    const authenticationProvider = new SharedAccessKeyAuthenticationProvider(
+      {
+        host: authConfig.iothubHostName,
+        deviceId: authConfig.deviceId,
+        moduleId: authConfig.moduleId,
+        gatewayHostName: authConfig.gatewayHostName
+      },
+      null,
+      null,
+      new IotEdgedSignatureProvider(authConfig)
+    );
+
+    return new clientCtor(
+      new transportCtor(authenticationProvider),
+      null,
+      new BlobUploadClient(authenticationProvider)
+    );
+  }
 }
 
 /**
@@ -738,8 +817,3 @@ export interface MethodMessage {
 }
 
 export type TransportCtor = new(config: Config) => DeviceTransport;
-
-
-
-
-
